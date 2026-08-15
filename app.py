@@ -109,9 +109,9 @@ def main():
         st.stop()
 
     top_n = 10
-    w_title = 0.5
-    w_text = 0.3
-    w_genre = 0.2
+    w_title = 0.15
+    w_text = 0.55
+    w_genre = 0.3
 
     movie_list = sorted(data_model['title'].dropna().unique())
     selected_movie = st.selectbox("اختر فيلم:", movie_list)
