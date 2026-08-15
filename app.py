@@ -1,5 +1,4 @@
 import ast
-
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -22,13 +21,14 @@ def load_and_clean_data():
     ratings = pd.read_csv("ratings_small.csv")
     movies = pd.read_csv("movies_metadata.csv", low_memory=False)
 
-    # نفس خطوات التنظيف اللي في النوتبوك
+    # 1. تصفية ومعالجة أنواع البيانات للـ IDs والأرقام
     movies = movies[movies["id"].str.isnumeric()]
     movies["id"] = movies["id"].astype(int)
     movies["budget"] = pd.to_numeric(movies["budget"], errors="coerce")
     movies["popularity"] = pd.to_numeric(movies["popularity"], errors="coerce")
     movies["revenue"] = pd.to_numeric(movies["revenue"], errors="coerce")
 
+    # 2. إسقاط الأعمدة غير الضرورية وحذف التكرارات
     movies.drop(
         ["belongs_to_collection", "homepage", "spoken_languages", "original_title", "poster_path"],
         inplace=True,
@@ -37,14 +37,17 @@ def load_and_clean_data():
     )
     movies.drop_duplicates(inplace=True, keep="first")
 
+    # 3. ملء وترشيح النصوص الفارغة
     movies["tagline"] = movies["tagline"].fillna("")
     movies["overview"] = movies["overview"].fillna("")
     movies.dropna(inplace=True)
 
+    # 4. استخراج الأسماء من حقول JSON/Literal Strings
     movies["production_countries"] = movies["production_countries"].apply(extract_names)
     movies["production_companies"] = movies["production_companies"].apply(extract_names)
     movies["genres"] = movies["genres"].apply(extract_names)
 
+    # 5. تجهيز داتا الموديل الأولية
     data_model = movies[
         [
             "id",
@@ -61,6 +64,7 @@ def load_and_clean_data():
     ].copy()
     data_model = data_model.reset_index(drop=True)
 
+    # 6. معالجة القيم الصفرية وتعبئتها بالمعدلات المتوسطة
     movies["runtime"] = movies["runtime"].replace(0, np.nan)
     movies["budget"] = movies["budget"].replace(0, np.nan)
     movies["revenue"] = movies["revenue"].replace(0, np.nan)
@@ -68,12 +72,14 @@ def load_and_clean_data():
     movies["budget"] = movies["budget"].fillna(movies["budget"].mean())
     movies["revenue"] = movies["revenue"].fillna(movies["revenue"].mean())
 
+    # 7. استبعاد الصفوف النصية الفارغة
     movies = movies[movies["genres"] != ""]
     movies = movies[movies["overview"] != ""]
     movies = movies[movies["production_companies"] != ""]
     movies = movies[movies["production_countries"] != ""]
     movies = movies[movies["tagline"] != ""]
 
+    # 8. التعامل مع الـ Outliers بناءً على المدى الربيعي (IQR)
     outlier_cols = ["popularity", "vote_count", "vote_average"]
     for col in outlier_cols:
         q1 = movies[col].quantile(0.25)
@@ -83,6 +89,7 @@ def load_and_clean_data():
         upper = q3 + 1.5 * iqr
         movies = movies[(movies[col] >= lower) & (movies[col] <= upper)]
 
+    # 9. بناء حقل المحتوى لتمثيل الفيلم نصياً
     data_model["content"] = (
         data_model["overview"]
         + " "
@@ -124,7 +131,11 @@ with st.spinner("بنجهز الداتا والموديل... (بيحصل مرة 
 
 titles = sorted(data_model["title"].unique().tolist())
 
-selected_movie = st.selectbox("اختار فيلم:", titles, index=titles.index("Toy Story") if "Toy Story" in titles else 0)
+selected_movie = st.selectbox(
+    "اختار فيلم:",
+    titles,
+    index=titles.index("Toy Story") if "Toy Story" in titles else 0,
+)
 top_n = st.slider("عدد التوصيات:", min_value=3, max_value=15, value=5)
 
 if st.button("وريني توصيات", type="primary"):
@@ -137,9 +148,12 @@ if st.button("وريني توصيات", type="primary"):
         st.subheader(f"أفلام شبه {selected_movie}")
         for _, row in results.iterrows():
             with st.container(border=True):
-                st.markdown(f"**{row['title']}**  \n*{row['genres']}*")
+                st.markdown(f"**{row['title']}** \n*{row['genres']}*")
                 st.caption(row["overview"][:300] + ("..." if len(row["overview"]) > 300 else ""))
-                st.progress(min(max(float(row["similarity"]), 0.0), 1.0), text=f"نسبة التشابه: {row['similarity']:.0%}")
+                st.progress(
+                    min(max(float(row["similarity"]), 0.0), 1.0),
+                    text=f"نسبة التشابه: {row['similarity']:.0%}",
+                )
 
 st.divider()
 st.caption(f"عدد الأفلام المتاحة للتوصية: {len(data_model):,} فيلم")
