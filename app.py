@@ -38,28 +38,22 @@ def load_and_clean_data():
     ratings = pd.read_csv(RATINGS_FILE)
     movies = pd.read_csv(MOVIES_FILE, low_memory=False)
 
-    movies = movies[movies["id"].str.isnumeric()]
+    # 1. تصفية ومعالجة المعرفات والأرقام
+    movies = movies[movies["id"].str.isnumeric()].copy()
     movies["id"] = movies["id"].astype(int)
-    movies["budget"] = pd.to_numeric(movies["budget"], errors="coerce")
-    movies["popularity"] = pd.to_numeric(movies["popularity"], errors="coerce")
-    movies["revenue"] = pd.to_numeric(movies["revenue"], errors="coerce")
 
-    movies.drop(
-        ["belongs_to_collection", "homepage", "spoken_languages", "original_title", "poster_path"],
-        inplace=True,
-        axis=1,
-        errors="ignore",
-    )
-    movies.drop_duplicates(inplace=True, keep="first")
+    # 2. إزالة التكرارات
+    movies.drop_duplicates(subset=["id"], inplace=True, keep="first")
 
+    # 3. تجهيز النصوص وتحضير الحقول
     movies["tagline"] = movies["tagline"].fillna("")
     movies["overview"] = movies["overview"].fillna("")
-    movies.dropna(inplace=True)
 
-    movies["production_countries"] = movies["production_countries"].apply(extract_names)
-    movies["production_companies"] = movies["production_companies"].apply(extract_names)
     movies["genres"] = movies["genres"].apply(extract_names)
+    movies["production_companies"] = movies["production_companies"].apply(extract_names)
+    movies["production_countries"] = movies["production_countries"].apply(extract_names)
 
+    # 4. بناء داتا الموديل وإعادة ضبط الفهرس لضمان التطابق مع TF-IDF
     data_model = movies[
         [
             "id",
@@ -70,34 +64,17 @@ def load_and_clean_data():
             "title",
             "production_countries",
             "production_companies",
-            "runtime",
             "tagline",
         ]
     ].copy()
-    data_model = data_model.reset_index(drop=True)
 
-    movies["runtime"] = movies["runtime"].replace(0, np.nan)
-    movies["budget"] = movies["budget"].replace(0, np.nan)
-    movies["revenue"] = movies["revenue"].replace(0, np.nan)
-    movies["runtime"] = movies["runtime"].fillna(movies["runtime"].median())
-    movies["budget"] = movies["budget"].fillna(movies["budget"].mean())
-    movies["revenue"] = movies["revenue"].fillna(movies["revenue"].mean())
+    # إزالة الصفوف التي تفتقر للعنوان أو الوصف لتجنب الضوضاء
+    data_model = data_model[data_model["title"].notnull() & (data_model["overview"] != "")]
+    
+    # خطوة حاسمة: إعادة ضبط الفهرس لتطابق المصفوفة 1:1
+    data_model.reset_index(drop=True, inplace=True)
 
-    movies = movies[movies["genres"] != ""]
-    movies = movies[movies["overview"] != ""]
-    movies = movies[movies["production_companies"] != ""]
-    movies = movies[movies["production_countries"] != ""]
-    movies = movies[movies["tagline"] != ""]
-
-    outlier_cols = ["popularity", "vote_count", "vote_average"]
-    for col in outlier_cols:
-        q1 = movies[col].quantile(0.25)
-        q3 = movies[col].quantile(0.75)
-        iqr = q3 - q1
-        lower = q1 - 1.5 * iqr
-        upper = q3 + 1.5 * iqr
-        movies = movies[(movies[col] >= lower) & (movies[col] <= upper)]
-
+    # 5. بناء حقل المحتوى النصي كما في Colab
     data_model["content"] = (
         data_model["overview"]
         + " "
@@ -115,25 +92,31 @@ def build_model(data_model):
     return tfidf, vector
 
 
-# دالة التوصية بنفس طريقة Colab وترجع قائمة أسماء (List of titles)
-def recommend(movie_title, top_n=6):
+def recommend(data_model, vector, movie_title, top_n=6):
     matches = data_model[data_model["title"] == movie_title]
     if matches.empty:
         return []
+    
+    # الحصول على موقع الصف الفعلي داخل الـ DataFrame
     index = matches.index[0]
+    
+    # حساب أرقام التشابه
     sim_scores = cosine_similarity(vector[index], vector).flatten()
+    
+    # ترتيب الأفلام حسب أعلى درجة تشابه (مع استبعاد الفيلم نفسه)
     distance = sorted(list(enumerate(sim_scores)), reverse=True, key=lambda x: x[1])
     top_indices = [i for i, _ in distance[1 : top_n + 1]]
+    
     return data_model.iloc[top_indices]["title"].tolist()
 
 
 # ---------------- الواجهة ----------------
 
 st.title("🎬 نظام توصية الأفلام")
-st.caption("اختار فيلم عجبك وهنقترحلك أفلام شبهه بناءً على القصة والنوع")
+st.caption("توصيات دقيقة متطابقة مع نتائج كود Colab")
 
 try:
-    with st.spinner("بنجهز الداتا والموديل..."):
+    with st.spinner("جاري التحميل وتجهيز النموذج..."):
         movies, data_model, ratings = load_and_clean_data()
         tfidf, vector = build_model(data_model)
 
@@ -147,21 +130,19 @@ try:
     top_n = st.number_input("عدد التوصيات:", min_value=1, max_value=20, value=6)
 
     if st.button("وريني توصيات", type="primary"):
-        recommendations = recommend(selected_movie, top_n)
+        recommendations = recommend(data_model, vector, selected_movie, top_n)
 
         if not recommendations:
-            st.warning("مفيش بيانات كفاية عن الفيلم ده.")
+            st.warning("لم يتم العثور على توصيات للفيلم المختار.")
         else:
             st.subheader(f"التوصيات لـ {selected_movie}:")
-            # عرض النتيجة على شكل القائمة النصية المطابقة لـ Colab
             st.code(str(recommendations), language="python")
 
-            # عرض النتائج بشكل قائمة منسقة
             for idx, movie in enumerate(recommendations, 1):
                 st.write(f"**{idx}.** {movie}")
 
     st.divider()
-    st.caption(f"عدد الأفلام المتاحة للتوصية: {len(data_model):,} فيلم")
+    st.caption(f"عدد الأفلام المتاحة: {len(data_model):,} فيلم")
 
 except Exception as e:
-    st.error(f"حدث خطأ أثناء تحميل البيانات: {e}")
+    st.error(f"حدث خطأ: {e}")
