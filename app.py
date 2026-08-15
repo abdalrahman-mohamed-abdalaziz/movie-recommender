@@ -115,7 +115,7 @@ def recommend(data_model, vector, movie_title, top_n=5):
 
 # ---------------- UI ----------------
 
-st.title("🎬 نظام توصية الأفلام")
+st.title("🎬RECOMMENDED-MOVIES")
 st.caption("اختار فيلم عجبك وهنقترحلك أفلام شبهه بناءً على القصة والنوع")
 
 with st.spinner("بنجهز الداتا والموديل... (بيحصل مرة واحدة بس)"):
