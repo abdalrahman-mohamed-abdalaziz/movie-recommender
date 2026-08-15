@@ -125,21 +125,10 @@ with st.spinner("بنجهز الداتا والموديل... (بيحصل مرة 
 
 titles = sorted(data_model["title"].unique().tolist())
 
-
-def search_movies(searchterm: str):
-    if not searchterm:
-        return []
-    return [t for t in titles if searchterm.lower() in t.lower()][:20]
-
-
-selected_movie = st_searchbox(
-    search_movies,
-    placeholder="اكتب اسم الفيلم...",
-    label="اختار فيلم:",
-    key="movie_searchbox",
-)
-
+selected_movie = st.selectbox("اختار فيلم:", titles, index=titles.index("Toy Story") if "Toy Story" in titles else 0)
 top_n = st.slider("عدد التوصيات:", min_value=3, max_value=15, value=5)
+
+
 genre_weight = st.slider(
     "وزن النوع مقابل القصة:", min_value=0.0, max_value=1.0, value=0.5, step=0.1,
     help="0 = التوصية على أساس القصة بس - 1 = التوصية على أساس النوع بس",
