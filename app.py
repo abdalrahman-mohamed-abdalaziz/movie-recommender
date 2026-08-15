@@ -28,7 +28,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 # --------------------------------------------------------------------------- #
 # Config
 # --------------------------------------------------------------------------- #
-DATA_DIR = Path("data")
+DATA_DIR = Path(".")
 MOVIES_PATH = DATA_DIR / "movies_metadata.csv"
 RATINGS_PATH = DATA_DIR / "ratings_small.csv"
 LINKS_PATH = DATA_DIR / "links_small.csv"
