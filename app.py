@@ -3,6 +3,7 @@ import ast
 import numpy as np
 import pandas as pd
 import streamlit as st
+from streamlit_searchbox import st_searchbox
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -124,8 +125,18 @@ with st.spinner("بنجهز الداتا والموديل... (بيحصل مرة 
 
 titles = sorted(data_model["title"].unique().tolist())
 
-selected_movie = st.selectbox("اختار فيلم:", titles, index=titles.index("Toy Story") if "Toy Story" in titles else 0)
-top_n = st.slider("عدد التوصيات:", min_value=3, max_value=15, value=5)
+def search_movies(searchterm: str):
+    if not searchterm:
+        return []
+    return [t for t in titles if searchterm.lower() in t.lower()][:20]
+
+selected_movie = st_searchbox(
+    search_movies,
+    placeholder="اكتب اسم الفيلم...",
+    key="movie_searchbox",
+)
+#top_n = st.slider("عدد التوصيات:", min_value=3, max_value=15, value=5)
+
 
 if st.button("وريني توصيات", type="primary"):
     with st.spinner("بنحسب أقرب الأفلام..."):
