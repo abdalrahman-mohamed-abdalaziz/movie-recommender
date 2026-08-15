@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from streamlit_searchbox import st_searchbox
+#from streamlit_searchbox import st_searchbox
 
 st.set_page_config(page_title="نظام توصية الأفلام", page_icon="🎬", layout="centered")
 
