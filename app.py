@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from streamlit_searchbox import st_searchbox
 
 st.set_page_config(page_title="نظام توصية الأفلام", page_icon="🎬", layout="centered")
 
@@ -21,12 +22,14 @@ def load_and_clean_data():
     ratings = pd.read_csv("ratings_small.csv")
     movies = pd.read_csv("movies_metadata.csv", low_memory=False)
 
+    # 1. فلترة البيانات وتحويل الأنواع
     movies = movies[movies["id"].str.isnumeric()].copy()
     movies["id"] = movies["id"].astype(int)
     movies["budget"] = pd.to_numeric(movies["budget"], errors="coerce")
     movies["popularity"] = pd.to_numeric(movies["popularity"], errors="coerce")
     movies["revenue"] = pd.to_numeric(movies["revenue"], errors="coerce")
 
+    # 2. إزالة العواميد وتكرارات البيانات
     movies.drop(
         ["belongs_to_collection", "homepage", "spoken_languages", "original_title", "poster_path"],
         inplace=True,
@@ -35,27 +38,31 @@ def load_and_clean_data():
     )
     movies.drop_duplicates(subset=["id"], inplace=True, keep="first")
 
+    # 3. معالجة النصوص وحساب القيم
     movies["tagline"] = movies["tagline"].fillna("")
     movies["overview"] = movies["overview"].fillna("")
-
+    
     movies["production_countries"] = movies["production_countries"].apply(extract_names)
     movies["production_companies"] = movies["production_companies"].apply(extract_names)
     movies["genres"] = movies["genres"].apply(extract_names)
 
+    # فلترة القيم الفارغة للنصوص الأساسية
     movies = movies[
         (movies["title"].str.strip() != "") &
         (movies["genres"].str.strip() != "") &
         (movies["overview"].str.strip() != "")
     ]
 
+    # 4. معالجة الأرقام و القيم الصفرية
     movies["runtime"] = movies["runtime"].replace(0, np.nan)
     movies["budget"] = movies["budget"].replace(0, np.nan)
     movies["revenue"] = movies["revenue"].replace(0, np.nan)
-
+    
     movies["runtime"] = movies["runtime"].fillna(movies["runtime"].median())
     movies["budget"] = movies["budget"].fillna(movies["budget"].mean())
     movies["revenue"] = movies["revenue"].fillna(movies["revenue"].mean())
 
+    # 5. معالجة القيم الشاذة (Outliers)
     outlier_cols = ["popularity", "vote_count", "vote_average"]
     for col in outlier_cols:
         if col in movies.columns:
@@ -66,6 +73,7 @@ def load_and_clean_data():
             upper = q3 + 1.5 * iqr
             movies = movies[(movies[col] >= lower) & (movies[col] <= upper)]
 
+    # 6. تجهيز data_model النهائية متطابقة 100% مع movies
     data_model = movies[
         [
             "id",
@@ -101,14 +109,14 @@ def recommend(data_model, vec_text, vec_genre, movie_title, top_n=5, w_text=0.5,
     matches = data_model[data_model["title"] == movie_title]
     if matches.empty:
         return pd.DataFrame()
-
+    
     index = matches.index[0]
     sim_text = cosine_similarity(vec_text[index], vec_text).flatten()
     sim_genre = cosine_similarity(vec_genre[index], vec_genre).flatten()
-
+    
     sim_scores = w_text * sim_text + w_genre * sim_genre
     distance = sorted(list(enumerate(sim_scores)), reverse=True, key=lambda x: x[1])
-
+    
     top_indices = [i for i, _ in distance[1 : top_n + 1]]
     result = data_model.iloc[top_indices][["title", "genres", "overview"]].copy()
     result["similarity"] = [sim_scores[i] for i in top_indices]
@@ -126,12 +134,18 @@ with st.spinner("بنجهز الداتا والموديل... (بيحصل مرة 
 
 titles = sorted(data_model["title"].unique().tolist())
 
-# قائمة بجميع الأفلام المتاحة
-selected_movie = st.selectbox(
-    "اختار فيلم من القائمة المتاحة:",
-    options=[""] + titles,
-    index=0,
-    help="اكتب اسم الفيلم للبحث أو اختار مباشرة من القائمة"
+
+def search_movies(searchterm: str):
+    if not searchterm:
+        return []
+    return [t for t in titles if searchterm.lower() in t.lower()][:20]
+
+
+selected_movie = st_searchbox(
+    search_movies,
+    placeholder="اكتب اسم الفيلم...",
+    label="اختار فيلم:",
+    key="movie_searchbox",
 )
 
 top_n = 5
@@ -139,7 +153,7 @@ genre_weight = 0.5
 
 if st.button("وريني توصيات", type="primary"):
     if not selected_movie:
-        st.warning("اختار فيلم الأول من القائمة فوق.")
+        st.warning("اختار فيلم الأول من مربع البحث فوق.")
     else:
         with st.spinner("بنحسب أقرب الأفلام..."):
             results = recommend(
