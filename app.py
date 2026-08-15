@@ -98,7 +98,7 @@ def main():
     st.caption("نظام توصية أفلام Content-Based بناءً على العنوان، القصة، والنوع")
 
     try:
-        with st.spinner("جاري تحميل البيانات وتجهيز النموذج... (أول مرة فقط)"):
+        with st.spinner("جاري تحميل البيانات وتجهيز النموذج..."):
             data_model = load_and_prepare_data()
             vec_title, vec_text, vec_genre = build_model(data_model)
     except FileNotFoundError:
@@ -116,7 +116,7 @@ def main():
     movie_list = sorted(data_model['title'].dropna().unique())
     selected_movie = st.selectbox("اختر فيلم:", movie_list)
 
-    if st.button("احصل على التوصيات 🎯", type="primary"):
+    if st.button("Recommend other movies 🎯", type="primary"):
         results = recommend(
             selected_movie, data_model, vec_title, vec_text, vec_genre,
             top_n=top_n, w_title=w_title, w_text=w_text, w_genre=w_genre
