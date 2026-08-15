@@ -1,4 +1,19 @@
+"""
+Movie Recommender System - Streamlit App
+==========================================
+Content-based movie recommender using TF-IDF on title, overview+tagline, and genres.
+Based on the analysis/training notebook (final__project__5_.ipynb).
 
+Expected data files (place them in a folder named `data/` next to this script,
+or change DATA_DIR below):
+    - movies_metadata.csv
+    - ratings_small.csv
+    - links_small.csv
+
+Run locally:
+    pip install -r requirements.txt
+    streamlit run app.py
+"""
 
 import ast
 import random
