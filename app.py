@@ -136,7 +136,7 @@ else:
     st.warning("مفيش أفلام مطابقة للبحث ده.")
     selected_movie = None
 
-top_n = st.slider("عدد التوصيات:", min_value=3, max_value=15, value=5)
+# top_n = st.slider("عدد التوصيات:", min_value=3, max_value=15, value=5)
 
 if st.button("وريني توصيات", type="primary"):
     with st.spinner("بنحسب أقرب الأفلام..."):
