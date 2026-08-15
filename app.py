@@ -128,9 +128,8 @@ titles = sorted(data_model["title"].unique().tolist())
 
 def search_movies(searchterm: str):
     if not searchterm:
-        return titles[:30]
+        return titles[:50]
     return [t for t in titles if searchterm.lower() in t.lower()][:20]
-
 
 selected_movie = st_searchbox(
     search_movies,
