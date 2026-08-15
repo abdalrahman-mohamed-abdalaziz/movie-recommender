@@ -124,7 +124,18 @@ with st.spinner("بنجهز الداتا والموديل... (بيحصل مرة 
 
 titles = sorted(data_model["title"].unique().tolist())
 
-selected_movie = st.selectbox("اختار فيلم:", titles, index=titles.index("Toy Story") if "Toy Story" in titles else 0)
+search_query = st.text_input("ابحث عن اسم الفيلم:", "Toy Story")
+if search_query:
+    filtered_titles = [t for t in titles if search_query.lower() in t.lower()][:30]
+else:
+    filtered_titles = titles[:30]
+
+if filtered_titles:
+    selected_movie = st.selectbox("اختار من النتائج:", filtered_titles)
+else:
+    st.warning("مفيش أفلام مطابقة للبحث ده.")
+    selected_movie = None
+
 top_n = st.slider("عدد التوصيات:", min_value=3, max_value=15, value=5)
 
 if st.button("وريني توصيات", type="primary"):
