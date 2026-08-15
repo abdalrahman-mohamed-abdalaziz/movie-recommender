@@ -6,7 +6,7 @@ import streamlit as st
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-st.set_page_config(page_title="نظام توصية الأفلام", page_icon="🎬", layout="centered")
+st.set_page_config(page_title="RECOMMENDED-MOVIES", page_icon="🎬", layout="centered")
 
 
 def extract_names(field_str):
