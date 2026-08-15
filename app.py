@@ -83,29 +83,30 @@ def load_and_clean_data():
         upper = q3 + 1.5 * iqr
         movies = movies[(movies[col] >= lower) & (movies[col] <= upper)]
 
-    data_model["content"] = (
-        data_model["overview"]
-        + " "
-        + ((data_model["genres"] + " ") * 3)
-        + data_model["tagline"]
-    )
+    data_model["text_content"] = data_model["overview"] + " " + data_model["tagline"]
 
     return movies, data_model, ratings
 
 
 @st.cache_resource(show_spinner=False)
 def build_model(data_model):
-    tfidf = TfidfVectorizer(max_features=40000, stop_words="english")
-    vector = tfidf.fit_transform(data_model["content"].values.astype("U"))
-    return tfidf, vector
+    tfidf_text = TfidfVectorizer(max_features=40000, stop_words="english")
+    vec_text = tfidf_text.fit_transform(data_model["text_content"].values.astype("U"))
+
+    tfidf_genre = TfidfVectorizer()
+    vec_genre = tfidf_genre.fit_transform(data_model["genres"].values.astype("U"))
+
+    return vec_text, vec_genre
 
 
-def recommend(data_model, vector, movie_title, top_n=5):
+def recommend(data_model, vec_text, vec_genre, movie_title, top_n=5, w_text=0.5, w_genre=0.5):
     matches = data_model[data_model["title"] == movie_title]
     if matches.empty:
         return pd.DataFrame()
     index = matches.index[0]
-    sim_scores = cosine_similarity(vector[index], vector).flatten()
+    sim_text = cosine_similarity(vec_text[index], vec_text).flatten()
+    sim_genre = cosine_similarity(vec_genre[index], vec_genre).flatten()
+    sim_scores = w_text * sim_text + w_genre * sim_genre
     distance = sorted(list(enumerate(sim_scores)), reverse=True, key=lambda x: x[1])
     top_indices = [i for i, _ in distance[1 : top_n + 1]]
     result = data_model.iloc[top_indices][["title", "genres", "overview"]].copy()
@@ -120,7 +121,7 @@ st.caption("اختار فيلم عجبك وهنقترحلك أفلام شبهه 
 
 with st.spinner("بنجهز الداتا والموديل... (بيحصل مرة واحدة بس)"):
     movies, data_model, ratings = load_and_clean_data()
-    tfidf, vector = build_model(data_model)
+    vec_text, vec_genre = build_model(data_model)
 
 titles = sorted(data_model["title"].unique().tolist())
 
@@ -139,13 +140,20 @@ selected_movie = st_searchbox(
 )
 
 top_n = st.slider("عدد التوصيات:", min_value=3, max_value=15, value=5)
+genre_weight = st.slider(
+    "وزن النوع مقابل القصة:", min_value=0.0, max_value=1.0, value=0.5, step=0.1,
+    help="0 = التوصية على أساس القصة بس - 1 = التوصية على أساس النوع بس",
+)
 
 if st.button("وريني توصيات", type="primary"):
     if not selected_movie:
         st.warning("اختار فيلم الأول من مربع البحث فوق.")
     else:
         with st.spinner("بنحسب أقرب الأفلام..."):
-            results = recommend(data_model, vector, selected_movie, top_n=top_n)
+            results = recommend(
+                data_model, vec_text, vec_genre, selected_movie,
+                top_n=top_n, w_text=1 - genre_weight, w_genre=genre_weight,
+            )
 
         if results.empty:
             st.warning("مفيش بيانات كفاية عن الفيلم ده.")
