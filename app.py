@@ -9,7 +9,6 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 st.set_page_config(page_title="نظام توصية الأفلام", page_icon="🎬", layout="centered")
 
-# روابط تنزيل مباشرة للبيانات
 MOVIES_URL = "https://raw.githubusercontent.com/Rouby2004/Movie-Recommendation-System/main/movies_metadata.csv"
 RATINGS_URL = "https://raw.githubusercontent.com/Rouby2004/Movie-Recommendation-System/main/ratings_small.csv"
 
@@ -18,7 +17,6 @@ RATINGS_FILE = "ratings_small.csv"
 
 
 def download_file_if_missing(url, file_path):
-    """تنزيل الملف إذا كان غير موجود أو حجمه صفر"""
     if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
         with st.spinner(f"جاري تنزيل ملف البيانات {file_path}..."):
             urllib.request.urlretrieve(url, file_path)
@@ -34,21 +32,18 @@ def extract_names(field_str):
 
 @st.cache_data(show_spinner=False)
 def load_and_clean_data():
-    # 0. التأكد من تنزيل الملفات بنجاح
     download_file_if_missing(MOVIES_URL, MOVIES_FILE)
     download_file_if_missing(RATINGS_URL, RATINGS_FILE)
 
     ratings = pd.read_csv(RATINGS_FILE)
     movies = pd.read_csv(MOVIES_FILE, low_memory=False)
 
-    # 1. تصفية ومعالجة أنواع البيانات للـ IDs والأرقام
     movies = movies[movies["id"].str.isnumeric()]
     movies["id"] = movies["id"].astype(int)
     movies["budget"] = pd.to_numeric(movies["budget"], errors="coerce")
     movies["popularity"] = pd.to_numeric(movies["popularity"], errors="coerce")
     movies["revenue"] = pd.to_numeric(movies["revenue"], errors="coerce")
 
-    # 2. إسقاط الأعمدة غير الضرورية وحذف التكرارات
     movies.drop(
         ["belongs_to_collection", "homepage", "spoken_languages", "original_title", "poster_path"],
         inplace=True,
@@ -57,17 +52,14 @@ def load_and_clean_data():
     )
     movies.drop_duplicates(inplace=True, keep="first")
 
-    # 3. ملء وترشيح النصوص الفارغة
     movies["tagline"] = movies["tagline"].fillna("")
     movies["overview"] = movies["overview"].fillna("")
     movies.dropna(inplace=True)
 
-    # 4. استخراج الأسماء من حقول JSON/Literal Strings
     movies["production_countries"] = movies["production_countries"].apply(extract_names)
     movies["production_companies"] = movies["production_companies"].apply(extract_names)
     movies["genres"] = movies["genres"].apply(extract_names)
 
-    # 5. تجهيز داتا الموديل الأولى
     data_model = movies[
         [
             "id",
@@ -84,7 +76,6 @@ def load_and_clean_data():
     ].copy()
     data_model = data_model.reset_index(drop=True)
 
-    # 6. معالجة القيم الصفرية وتعبئتها بالمعدلات المتوسطة
     movies["runtime"] = movies["runtime"].replace(0, np.nan)
     movies["budget"] = movies["budget"].replace(0, np.nan)
     movies["revenue"] = movies["revenue"].replace(0, np.nan)
@@ -92,14 +83,12 @@ def load_and_clean_data():
     movies["budget"] = movies["budget"].fillna(movies["budget"].mean())
     movies["revenue"] = movies["revenue"].fillna(movies["revenue"].mean())
 
-    # 7. استبعاد الصفوف النصية الفارغة
     movies = movies[movies["genres"] != ""]
     movies = movies[movies["overview"] != ""]
     movies = movies[movies["production_companies"] != ""]
     movies = movies[movies["production_countries"] != ""]
     movies = movies[movies["tagline"] != ""]
 
-    # 8. التعامل مع الـ Outliers بناءً على المدى الربيعي (IQR)
     outlier_cols = ["popularity", "vote_count", "vote_average"]
     for col in outlier_cols:
         q1 = movies[col].quantile(0.25)
@@ -109,7 +98,6 @@ def load_and_clean_data():
         upper = q3 + 1.5 * iqr
         movies = movies[(movies[col] >= lower) & (movies[col] <= upper)]
 
-    # 9. بناء حقل المحتوى لتمثيل الفيلم نصياً
     data_model["content"] = (
         data_model["overview"]
         + " "
@@ -127,17 +115,16 @@ def build_model(data_model):
     return tfidf, vector
 
 
-def recommend(data_model, vector, movie_title, top_n=5):
+# دالة التوصية بنفس طريقة Colab وترجع قائمة أسماء (List of titles)
+def recommend(movie_title, top_n=6):
     matches = data_model[data_model["title"] == movie_title]
     if matches.empty:
-        return pd.DataFrame()
+        return []
     index = matches.index[0]
     sim_scores = cosine_similarity(vector[index], vector).flatten()
     distance = sorted(list(enumerate(sim_scores)), reverse=True, key=lambda x: x[1])
     top_indices = [i for i, _ in distance[1 : top_n + 1]]
-    result = data_model.iloc[top_indices][["title", "genres", "overview"]].copy()
-    result["similarity"] = [sim_scores[i] for i in top_indices]
-    return result
+    return data_model.iloc[top_indices]["title"].tolist()
 
 
 # ---------------- الواجهة ----------------
@@ -146,7 +133,7 @@ st.title("🎬 نظام توصية الأفلام")
 st.caption("اختار فيلم عجبك وهنقترحلك أفلام شبهه بناءً على القصة والنوع")
 
 try:
-    with st.spinner("بنجهز الداتا والموديل... (بيحصل مرة واحدة بس)"):
+    with st.spinner("بنجهز الداتا والموديل..."):
         movies, data_model, ratings = load_and_clean_data()
         tfidf, vector = build_model(data_model)
 
@@ -157,24 +144,21 @@ try:
         titles,
         index=titles.index("Toy Story") if "Toy Story" in titles else 0,
     )
-    top_n = st.slider("عدد التوصيات:", min_value=3, max_value=15, value=5)
+    top_n = st.number_input("عدد التوصيات:", min_value=1, max_value=20, value=6)
 
     if st.button("وريني توصيات", type="primary"):
-        with st.spinner("بنحسب أقرب الأفلام..."):
-            results = recommend(data_model, vector, selected_movie, top_n=top_n)
+        recommendations = recommend(selected_movie, top_n)
 
-        if results.empty:
+        if not recommendations:
             st.warning("مفيش بيانات كفاية عن الفيلم ده.")
         else:
-            st.subheader(f"أفلام شبه {selected_movie}")
-            for _, row in results.iterrows():
-                with st.container(border=True):
-                    st.markdown(f"**{row['title']}** \n*{row['genres']}*")
-                    st.caption(row["overview"][:300] + ("..." if len(row["overview"]) > 300 else ""))
-                    st.progress(
-                        min(max(float(row["similarity"]), 0.0), 1.0),
-                        text=f"نسبة التشابه: {row['similarity']:.0%}",
-                    )
+            st.subheader(f"التوصيات لـ {selected_movie}:")
+            # عرض النتيجة على شكل القائمة النصية المطابقة لـ Colab
+            st.code(str(recommendations), language="python")
+
+            # عرض النتائج بشكل قائمة منسقة
+            for idx, movie in enumerate(recommendations, 1):
+                st.write(f"**{idx}.** {movie}")
 
     st.divider()
     st.caption(f"عدد الأفلام المتاحة للتوصية: {len(data_model):,} فيلم")
