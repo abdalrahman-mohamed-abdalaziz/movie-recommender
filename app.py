@@ -133,23 +133,10 @@ with st.spinner("بنجهز الداتا والموديل... (بيحصل مرة 
     vec_text, vec_genre = build_model(data_model)
 
 titles = sorted(data_model["title"].unique().tolist())
-
-
-def search_movies(searchterm: str):
-    if not searchterm:
-        return []
-    return [t for t in titles if searchterm.lower() in t.lower()][:20]
-
-
-selected_movie = st_searchbox(
-    search_movies,
-    placeholder="اكتب اسم الفيلم...",
-    label="اختار فيلم:",
-    key="movie_searchbox",
-)
-
-top_n = 5
-genre_weight = 0.5
+ 
+selected_movie = st.selectbox("اختار فيلم:", titles, index=titles.index("Toy Story") if "Toy Story" in titles else 0)
+top_n = st.slider("عدد التوصيات:", min_value=3, max_value=15, value=5)
+ 
 
 if st.button("وريني توصيات", type="primary"):
     if not selected_movie:
