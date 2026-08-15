@@ -7,7 +7,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from streamlit_searchbox import st_searchbox
 
-st.set_page_config(page_title="Movie Recommender System", page_icon="🎬", layout="centered")
+st.set_page_config(page_title="نظام توصية الأفلام", page_icon="🎬", layout="centered")
 
 
 def extract_names(field_str):
@@ -116,8 +116,8 @@ def recommend(data_model, vec_text, vec_genre, movie_title, top_n=5, w_text=0.5,
 
 # ---------------- UI ----------------
 
-st.title("🎬 Movie Recommender System")
-st.caption("اكتب اسم فيلم عجبك وهنقترحلك أفلام شبهه بناءً على القصة والنوع")
+st.title("🎬 نظام توصية الأفلام")
+st.caption("اختار فيلم عجبك وهنقترحلك أفلام شبهه بناءً على القصة والنوع")
 
 with st.spinner("بنجهز الداتا والموديل... (بيحصل مرة واحدة بس)"):
     movies, data_model, ratings = load_and_clean_data()
@@ -126,7 +126,8 @@ with st.spinner("بنجهز الداتا والموديل... (بيحصل مرة 
 titles = sorted(data_model["title"].unique().tolist())
 
 selected_movie = st.selectbox("اختار فيلم:", titles, index=titles.index("Toy Story") if "Toy Story" in titles else 0)
-top_n = st.slider("عدد التوصيات:", min_value=3, max_value=15, value=5)
+# top_n = st.slider("عدد التوصيات:", min_value=3, max_value=15, value=5)
+
 
 if st.button("وريني توصيات", type="primary"):
     if not selected_movie:
