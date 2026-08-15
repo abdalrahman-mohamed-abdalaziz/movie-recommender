@@ -108,11 +108,10 @@ def main():
         )
         st.stop()
 
-    st.sidebar.header("⚙️ الإعدادات")
-    top_n = st.sidebar.slider("عدد التوصيات", 1, 20, 5)
-    w_title = st.sidebar.slider("وزن العنوان", 0.0, 1.0, 0.5)
-    w_text = st.sidebar.slider("وزن القصة (overview + tagline)", 0.0, 1.0, 0.3)
-    w_genre = st.sidebar.slider("وزن النوع", 0.0, 1.0, 0.2)
+    top_n = 10
+    w_title = 0.5
+    w_text = 0.3
+    w_genre = 0.2
 
     movie_list = sorted(data_model['title'].dropna().unique())
     selected_movie = st.selectbox("اختر فيلم:", movie_list)
