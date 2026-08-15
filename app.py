@@ -40,6 +40,9 @@ def load_and_prepare_data():
     movies['production_companies'] = movies['production_companies'].apply(extract_names)
     movies['genres'] = movies['genres'].apply(extract_names)
 
+    # keep only the top 10,000 movies by popularity to limit dataset size
+    movies = movies.sort_values('popularity', ascending=False).head(10000)
+
     data_model = movies[['id', 'imdb_id', 'genres', 'original_language', 'overview',
                           'title', 'production_countries', 'production_companies',
                           'runtime', 'tagline']].copy()
