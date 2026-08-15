@@ -1,148 +1,135 @@
-import ast
-import os
-import urllib.request
-import numpy as np
-import pandas as pd
 import streamlit as st
+import pandas as pd
+import numpy as np
+import ast
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-st.set_page_config(page_title="نظام توصية الأفلام", page_icon="🎬", layout="centered")
-
-MOVIES_URL = "https://raw.githubusercontent.com/Rouby2004/Movie-Recommendation-System/main/movies_metadata.csv"
-RATINGS_URL = "https://raw.githubusercontent.com/Rouby2004/Movie-Recommendation-System/main/ratings_small.csv"
-
-MOVIES_FILE = "movies_metadata.csv"
-RATINGS_FILE = "ratings_small.csv"
-
-
-def download_file_if_missing(url, file_path):
-    if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
-        with st.spinner(f"جاري تنزيل ملف البيانات {file_path}..."):
-            urllib.request.urlretrieve(url, file_path)
-
-
-def extract_names(field_str):
-    try:
-        items_list = ast.literal_eval(field_str)
-        return " ".join([item["name"] for item in items_list])
-    except Exception:
-        return ""
+st.set_page_config(page_title="Movie Recommender", page_icon="🎬", layout="wide")
 
 
 @st.cache_data(show_spinner=False)
-def load_and_clean_data():
-    download_file_if_missing(MOVIES_URL, MOVIES_FILE)
-    download_file_if_missing(RATINGS_URL, RATINGS_FILE)
+def load_and_prepare_data():
+    movies = pd.read_csv("movies_metadata.csv", low_memory=False)
 
-    ratings = pd.read_csv(RATINGS_FILE)
-    movies = pd.read_csv(MOVIES_FILE, low_memory=False)
+    # keep only rows with a valid numeric id
+    movies = movies[movies['id'].astype(str).str.isnumeric()]
+    movies['id'] = movies['id'].astype(int)
 
-    # 1. تصفية ومعالجة المعرفات والأرقام
-    movies = movies[movies["id"].str.isnumeric()].copy()
-    movies["id"] = movies["id"].astype(int)
+    movies['budget'] = pd.to_numeric(movies['budget'], errors='coerce')
+    movies['popularity'] = pd.to_numeric(movies['popularity'], errors='coerce')
+    movies['revenue'] = pd.to_numeric(movies['revenue'], errors='coerce')
 
-    # 2. إزالة التكرارات
-    movies.drop_duplicates(subset=["id"], inplace=True, keep="first")
+    drop_cols = ['belongs_to_collection', 'homepage', 'spoken_languages',
+                 'original_title', 'poster_path']
+    movies.drop(columns=[c for c in drop_cols if c in movies.columns], inplace=True)
+    movies.drop_duplicates(inplace=True, keep='first')
 
-    # 3. تجهيز النصوص وتحضير الحقول
-    movies["tagline"] = movies["tagline"].fillna("")
-    movies["overview"] = movies["overview"].fillna("")
+    movies['tagline'] = movies['tagline'].fillna('')
+    movies['overview'] = movies['overview'].fillna('')
+    movies.dropna(inplace=True)
 
-    movies["genres"] = movies["genres"].apply(extract_names)
-    movies["production_companies"] = movies["production_companies"].apply(extract_names)
-    movies["production_countries"] = movies["production_countries"].apply(extract_names)
+    def extract_names(field_str):
+        try:
+            items_list = ast.literal_eval(field_str)
+            return " ".join([item['name'] for item in items_list])
+        except Exception:
+            return ""
 
-    # 4. بناء داتا الموديل وإعادة ضبط الفهرس لضمان التطابق مع TF-IDF
-    data_model = movies[
-        [
-            "id",
-            "imdb_id",
-            "genres",
-            "original_language",
-            "overview",
-            "title",
-            "production_countries",
-            "production_companies",
-            "tagline",
-        ]
-    ].copy()
+    movies['production_countries'] = movies['production_countries'].apply(extract_names)
+    movies['production_companies'] = movies['production_companies'].apply(extract_names)
+    movies['genres'] = movies['genres'].apply(extract_names)
 
-    # إزالة الصفوف التي تفتقر للعنوان أو الوصف لتجنب الضوضاء
-    data_model = data_model[data_model["title"].notnull() & (data_model["overview"] != "")]
-    
-    # خطوة حاسمة: إعادة ضبط الفهرس لتطابق المصفوفة 1:1
-    data_model.reset_index(drop=True, inplace=True)
+    data_model = movies[['id', 'imdb_id', 'genres', 'original_language', 'overview',
+                          'title', 'production_countries', 'production_companies',
+                          'runtime', 'tagline']].copy()
+    data_model = data_model.reset_index(drop=True)
 
-    # 5. بناء حقل المحتوى النصي كما في Colab
-    data_model["content"] = (
-        data_model["overview"]
-        + " "
-        + ((data_model["genres"] + " ") * 3)
-        + data_model["tagline"]
-    )
+    data_model = data_model[data_model['genres'] != '']
+    data_model = data_model[data_model['overview'] != '']
+    data_model = data_model[data_model['tagline'] != '']
 
-    return movies, data_model, ratings
+    # avoid duplicate titles confusing the selectbox / lookup
+    data_model = data_model.drop_duplicates(subset='title').reset_index(drop=True)
+
+    return data_model
 
 
 @st.cache_resource(show_spinner=False)
-def build_model(data_model):
-    tfidf = TfidfVectorizer(max_features=40000, stop_words="english")
-    vector = tfidf.fit_transform(data_model["content"].values.astype("U"))
-    return tfidf, vector
+def build_model(data_model: pd.DataFrame):
+    text_content = data_model['overview'] + ' ' + data_model['tagline']
+    genre_content = data_model['genres']
+
+    tfidf_title = TfidfVectorizer(stop_words='english')
+    vec_title = tfidf_title.fit_transform(data_model['title'].values.astype('U'))
+
+    tfidf_text = TfidfVectorizer(max_features=40000, stop_words='english')
+    vec_text = tfidf_text.fit_transform(text_content.values.astype('U'))
+
+    tfidf_genre = TfidfVectorizer()
+    vec_genre = tfidf_genre.fit_transform(genre_content.values.astype('U'))
+
+    return vec_title, vec_text, vec_genre
 
 
-def recommend(data_model, vector, movie_title, top_n=6):
-    matches = data_model[data_model["title"] == movie_title]
+def recommend(movie_title, data_model, vec_title, vec_text, vec_genre,
+              top_n=5, w_title=0.5, w_text=0.3, w_genre=0.2):
+    matches = data_model[data_model['title'] == movie_title]
     if matches.empty:
-        return []
-    
-    # الحصول على موقع الصف الفعلي داخل الـ DataFrame
+        return pd.DataFrame()
     index = matches.index[0]
-    
-    # حساب أرقام التشابه
-    sim_scores = cosine_similarity(vector[index], vector).flatten()
-    
-    # ترتيب الأفلام حسب أعلى درجة تشابه (مع استبعاد الفيلم نفسه)
-    distance = sorted(list(enumerate(sim_scores)), reverse=True, key=lambda x: x[1])
-    top_indices = [i for i, _ in distance[1 : top_n + 1]]
-    
-    return data_model.iloc[top_indices]["title"].tolist()
+
+    sim_title = cosine_similarity(vec_title[index], vec_title).flatten()
+    sim_text = cosine_similarity(vec_text[index], vec_text).flatten()
+    sim_genre = cosine_similarity(vec_genre[index], vec_genre).flatten()
+
+    sim = w_title * sim_title + w_text * sim_text + w_genre * sim_genre
+
+    ranked = sorted(list(enumerate(sim)), reverse=True, key=lambda x: x[1])
+    top_indices = [i for i, s in ranked[1:top_n + 1]]
+    return data_model.iloc[top_indices][['title', 'genres', 'overview', 'tagline']]
 
 
-# ---------------- الواجهة ----------------
+def main():
+    st.title("🎬 Movie Recommender System")
+    st.caption("نظام توصية أفلام Content-Based بناءً على العنوان، القصة، والنوع")
 
-st.title("🎬 نظام توصية الأفلام")
-st.caption("توصيات دقيقة متطابقة مع نتائج كود Colab")
+    try:
+        with st.spinner("جاري تحميل البيانات وتجهيز النموذج... (أول مرة فقط)"):
+            data_model = load_and_prepare_data()
+            vec_title, vec_text, vec_genre = build_model(data_model)
+    except FileNotFoundError:
+        st.error(
+            "لم يتم العثور على ملف movies_metadata.csv.\n\n"
+            "لازم ترفع الملف في نفس المجلد اللي فيه app.py قبل تشغيل التطبيق."
+        )
+        st.stop()
 
-try:
-    with st.spinner("جاري التحميل وتجهيز النموذج..."):
-        movies, data_model, ratings = load_and_clean_data()
-        tfidf, vector = build_model(data_model)
+    st.sidebar.header("⚙️ الإعدادات")
+    top_n = st.sidebar.slider("عدد التوصيات", 1, 20, 5)
+    w_title = st.sidebar.slider("وزن العنوان", 0.0, 1.0, 0.5)
+    w_text = st.sidebar.slider("وزن القصة (overview + tagline)", 0.0, 1.0, 0.3)
+    w_genre = st.sidebar.slider("وزن النوع", 0.0, 1.0, 0.2)
 
-    titles = sorted(data_model["title"].unique().tolist())
+    movie_list = sorted(data_model['title'].dropna().unique())
+    selected_movie = st.selectbox("اختر فيلم:", movie_list)
 
-    selected_movie = st.selectbox(
-        "اختار فيلم:",
-        titles,
-        index=titles.index("Toy Story") if "Toy Story" in titles else 0,
-    )
-    top_n = st.number_input("عدد التوصيات:", min_value=1, max_value=20, value=6)
-
-    if st.button("وريني توصيات", type="primary"):
-        recommendations = recommend(data_model, vector, selected_movie, top_n)
-
-        if not recommendations:
-            st.warning("لم يتم العثور على توصيات للفيلم المختار.")
+    if st.button("احصل على التوصيات 🎯", type="primary"):
+        results = recommend(
+            selected_movie, data_model, vec_title, vec_text, vec_genre,
+            top_n=top_n, w_title=w_title, w_text=w_text, w_genre=w_genre
+        )
+        if results.empty:
+            st.warning("لم يتم العثور على الفيلم في قاعدة البيانات.")
         else:
-            st.subheader(f"التوصيات لـ {selected_movie}:")
-            st.code(str(recommendations), language="python")
+            st.subheader(f"أفلام مشابهة لـ: {selected_movie}")
+            for _, row in results.iterrows():
+                with st.expander(f"🎬 {row['title']}"):
+                    st.write(f"**النوع:** {row['genres']}")
+                    st.write(f"**الوصف:** {row['overview']}")
+                    if row['tagline']:
+                        st.write(f"**Tagline:** {row['tagline']}")
 
-            for idx, movie in enumerate(recommendations, 1):
-                st.write(f"**{idx}.** {movie}")
 
-    st.divider()
-    st.caption(f"عدد الأفلام المتاحة: {len(data_model):,} فيلم")
-
-except Exception as e:
-    st.error(f"حدث خطأ: {e}")
+if __name__ == "__main__":
+    main()
