@@ -125,12 +125,12 @@ with st.spinner("بنجهز الداتا والموديل... (بيحصل مرة 
 
 titles = sorted(data_model["title"].unique().tolist())
 
-
+'''
 def search_movies(searchterm: str):
     if not searchterm:
         return []
     return [t for t in titles if searchterm.lower() in t.lower()][:20]
-
+'''
 
 selected_movie = st_searchbox(
     search_movies,
