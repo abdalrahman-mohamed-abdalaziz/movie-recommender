@@ -3,11 +3,11 @@ import ast
 import numpy as np
 import pandas as pd
 import streamlit as st
-from streamlit_searchbox import st_searchbox
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from streamlit_searchbox import st_searchbox
 
-st.set_page_config(page_title="RECOMMENDED-MOVIES", page_icon="🎬", layout="centered")
+st.set_page_config(page_title="نظام توصية الأفلام", page_icon="🎬", layout="centered")
 
 
 def extract_names(field_str):
@@ -23,7 +23,6 @@ def load_and_clean_data():
     ratings = pd.read_csv("ratings_small.csv")
     movies = pd.read_csv("movies_metadata.csv", low_memory=False)
 
-    # نفس خطوات التنظيف اللي في النوتبوك
     movies = movies[movies["id"].str.isnumeric()]
     movies["id"] = movies["id"].astype(int)
     movies["budget"] = pd.to_numeric(movies["budget"], errors="coerce")
@@ -116,7 +115,7 @@ def recommend(data_model, vector, movie_title, top_n=5):
 
 # ---------------- UI ----------------
 
-st.title("🎬RECOMMENDED-MOVIES")
+st.title("🎬 نظام توصية الأفلام")
 st.caption("اختار فيلم عجبك وهنقترحلك أفلام شبهه بناءً على القصة والنوع")
 
 with st.spinner("بنجهز الداتا والموديل... (بيحصل مرة واحدة بس)"):
@@ -125,32 +124,41 @@ with st.spinner("بنجهز الداتا والموديل... (بيحصل مرة 
 
 titles = sorted(data_model["title"].unique().tolist())
 
+
 def search_movies(searchterm: str):
     if not searchterm:
         return []
     return [t for t in titles if searchterm.lower() in t.lower()][:20]
 
+
 selected_movie = st_searchbox(
     search_movies,
     placeholder="اكتب اسم الفيلم...",
+    label="اختار فيلم:",
     key="movie_searchbox",
 )
-#top_n = st.slider("عدد التوصيات:", min_value=3, max_value=15, value=5)
 
+top_n = st.slider("عدد التوصيات:", min_value=3, max_value=15, value=5)
 
 if st.button("وريني توصيات", type="primary"):
-    with st.spinner("بنحسب أقرب الأفلام..."):
-        results = recommend(data_model, vector, selected_movie, top_n=top_n)
-
-    if results.empty:
-        st.warning("مفيش بيانات كفاية عن الفيلم ده.")
+    if not selected_movie:
+        st.warning("اختار فيلم الأول من مربع البحث فوق.")
     else:
-        st.subheader(f"أفلام شبه {selected_movie}")
-        for _, row in results.iterrows():
-            with st.container(border=True):
-                st.markdown(f"**{row['title']}**  \n*{row['genres']}*")
-                st.caption(row["overview"][:300] + ("..." if len(row["overview"]) > 300 else ""))
-                st.progress(min(max(float(row["similarity"]), 0.0), 1.0), text=f"نسبة التشابه: {row['similarity']:.0%}")
+        with st.spinner("بنحسب أقرب الأفلام..."):
+            results = recommend(data_model, vector, selected_movie, top_n=top_n)
+
+        if results.empty:
+            st.warning("مفيش بيانات كفاية عن الفيلم ده.")
+        else:
+            st.subheader(f"أفلام شبه {selected_movie}")
+            for _, row in results.iterrows():
+                with st.container(border=True):
+                    st.markdown(f"**{row['title']}**  \n*{row['genres']}*")
+                    st.caption(row["overview"][:300] + ("..." if len(row["overview"]) > 300 else ""))
+                    st.progress(
+                        min(max(float(row["similarity"]), 0.0), 1.0),
+                        text=f"نسبة التشابه: {row['similarity']:.0%}",
+                    )
 
 st.divider()
 st.caption(f"عدد الأفلام المتاحة للتوصية: {len(data_model):,} فيلم")
