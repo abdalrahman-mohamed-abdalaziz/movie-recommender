@@ -1,4 +1,6 @@
 import ast
+import os
+import urllib.request
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -6,6 +8,20 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 st.set_page_config(page_title="نظام توصية الأفلام", page_icon="🎬", layout="centered")
+
+# روابط تنزيل مباشرة للبيانات
+MOVIES_URL = "https://raw.githubusercontent.com/Rouby2004/Movie-Recommendation-System/main/movies_metadata.csv"
+RATINGS_URL = "https://raw.githubusercontent.com/Rouby2004/Movie-Recommendation-System/main/ratings_small.csv"
+
+MOVIES_FILE = "movies_metadata.csv"
+RATINGS_FILE = "ratings_small.csv"
+
+
+def download_file_if_missing(url, file_path):
+    """تنزيل الملف إذا كان غير موجود أو حجمه صفر"""
+    if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
+        with st.spinner(f"جاري تنزيل ملف البيانات {file_path}..."):
+            urllib.request.urlretrieve(url, file_path)
 
 
 def extract_names(field_str):
@@ -18,8 +34,12 @@ def extract_names(field_str):
 
 @st.cache_data(show_spinner=False)
 def load_and_clean_data():
-    ratings = pd.read_csv("ratings_small.csv")
-    movies = pd.read_csv("movies_metadata.csv", low_memory=False)
+    # 0. التأكد من تنزيل الملفات بنجاح
+    download_file_if_missing(MOVIES_URL, MOVIES_FILE)
+    download_file_if_missing(RATINGS_URL, RATINGS_FILE)
+
+    ratings = pd.read_csv(RATINGS_FILE)
+    movies = pd.read_csv(MOVIES_FILE, low_memory=False)
 
     # 1. تصفية ومعالجة أنواع البيانات للـ IDs والأرقام
     movies = movies[movies["id"].str.isnumeric()]
@@ -47,7 +67,7 @@ def load_and_clean_data():
     movies["production_companies"] = movies["production_companies"].apply(extract_names)
     movies["genres"] = movies["genres"].apply(extract_names)
 
-    # 5. تجهيز داتا الموديل الأولية
+    # 5. تجهيز داتا الموديل الأولى
     data_model = movies[
         [
             "id",
@@ -120,40 +140,44 @@ def recommend(data_model, vector, movie_title, top_n=5):
     return result
 
 
-# ---------------- UI ----------------
+# ---------------- الواجهة ----------------
 
 st.title("🎬 نظام توصية الأفلام")
 st.caption("اختار فيلم عجبك وهنقترحلك أفلام شبهه بناءً على القصة والنوع")
 
-with st.spinner("بنجهز الداتا والموديل... (بيحصل مرة واحدة بس)"):
-    movies, data_model, ratings = load_and_clean_data()
-    tfidf, vector = build_model(data_model)
+try:
+    with st.spinner("بنجهز الداتا والموديل... (بيحصل مرة واحدة بس)"):
+        movies, data_model, ratings = load_and_clean_data()
+        tfidf, vector = build_model(data_model)
 
-titles = sorted(data_model["title"].unique().tolist())
+    titles = sorted(data_model["title"].unique().tolist())
 
-selected_movie = st.selectbox(
-    "اختار فيلم:",
-    titles,
-    index=titles.index("Toy Story") if "Toy Story" in titles else 0,
-)
-top_n = st.slider("عدد التوصيات:", min_value=3, max_value=15, value=5)
+    selected_movie = st.selectbox(
+        "اختار فيلم:",
+        titles,
+        index=titles.index("Toy Story") if "Toy Story" in titles else 0,
+    )
+    top_n = st.slider("عدد التوصيات:", min_value=3, max_value=15, value=5)
 
-if st.button("وريني توصيات", type="primary"):
-    with st.spinner("بنحسب أقرب الأفلام..."):
-        results = recommend(data_model, vector, selected_movie, top_n=top_n)
+    if st.button("وريني توصيات", type="primary"):
+        with st.spinner("بنحسب أقرب الأفلام..."):
+            results = recommend(data_model, vector, selected_movie, top_n=top_n)
 
-    if results.empty:
-        st.warning("مفيش بيانات كفاية عن الفيلم ده.")
-    else:
-        st.subheader(f"أفلام شبه {selected_movie}")
-        for _, row in results.iterrows():
-            with st.container(border=True):
-                st.markdown(f"**{row['title']}** \n*{row['genres']}*")
-                st.caption(row["overview"][:300] + ("..." if len(row["overview"]) > 300 else ""))
-                st.progress(
-                    min(max(float(row["similarity"]), 0.0), 1.0),
-                    text=f"نسبة التشابه: {row['similarity']:.0%}",
-                )
+        if results.empty:
+            st.warning("مفيش بيانات كفاية عن الفيلم ده.")
+        else:
+            st.subheader(f"أفلام شبه {selected_movie}")
+            for _, row in results.iterrows():
+                with st.container(border=True):
+                    st.markdown(f"**{row['title']}** \n*{row['genres']}*")
+                    st.caption(row["overview"][:300] + ("..." if len(row["overview"]) > 300 else ""))
+                    st.progress(
+                        min(max(float(row["similarity"]), 0.0), 1.0),
+                        text=f"نسبة التشابه: {row['similarity']:.0%}",
+                    )
 
-st.divider()
-st.caption(f"عدد الأفلام المتاحة للتوصية: {len(data_model):,} فيلم")
+    st.divider()
+    st.caption(f"عدد الأفلام المتاحة للتوصية: {len(data_model):,} فيلم")
+
+except Exception as e:
+    st.error(f"حدث خطأ أثناء تحميل البيانات: {e}")
